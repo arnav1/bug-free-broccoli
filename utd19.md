@@ -402,3 +402,136 @@ plt.show()
 * If you install `geopandas`, you can map top intersections with two lines.
 
 > Want me to turn this into a real `.ipynb` with outputs saved to disk? I can package these cells and add a few helper widgets next.
+
+---
+
+## ✨ Optional: install prettier plotting packages
+
+```bash
+pip install seaborn contextily geopandas shapely pyproj
+```
+
+> `seaborn` = nicer defaults; `contextily` = basemap tiles; `geopandas/shapely` = quick geometries; `pyproj` = reprojection.
+
+---
+
+## A) Set up Seaborn theme (one-liner)
+
+```python
+import seaborn as sns
+sns.set_theme(context="notebook", style="whitegrid")  # try context="talk" for slide-ready
+```
+
+---
+
+## B) Prettier L/T/R time series with Seaborn
+
+*(drop this cell right after you compute `TS` in section 9)*
+
+```python
+# TS has columns like ['hour','L','T','R','U'] (some may be missing)
+cols = [c for c in ["L","T","R","U"] if c in TS.columns]
+plot_df = TS.melt(id_vars="hour", value_vars=cols, var_name="turn", value_name="veh")
+
+ax = sns.lineplot(data=plot_df, x="hour", y="veh", hue="turn", marker="o")
+ax.set_title(f"Node {NODE}
+Estimated turning flows by hour (day {DAY})")
+ax.set_xlabel("Hour")
+ax.set_ylabel("Vehicles / hour")
+ax.figure.set_size_inches(8, 4)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## C) L/T/R heatmap (compact overview)
+
+```python
+heat = (TS.set_index("hour")[cols].fillna(0)).T  # rows=turn, cols=hour
+ax = sns.heatmap(heat, annot=False, cbar_kws={"label":"veh/h"})
+ax.set_title(f"Node {NODE}: L/T/R intensity by hour (day {DAY})")
+ax.set_xlabel("Hour of day")
+ax.set_ylabel("Turn")
+ax.figure.set_size_inches(7, 3.6)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## D) Nicer segment plot for one link
+
+*(drop this cell after section 10 where `seg_one` is built)*
+
+```python
+ax = sns.lineplot(data=seg_one, x="hour", y="veh", hue="day", marker="o")
+ax.set_title(f"Link {one_link}: hourly vehicles by day")
+ax.set_xlabel("Hour")
+ax.set_ylabel("Vehicles / hour")
+ax.figure.set_size_inches(8, 4)
+ax.legend(title="Day", ncols=2, frameon=True)
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## E) Tiny basemap around the selected node (Contextily)
+
+> Plots incoming vs outgoing links for `NODE` over a light basemap. Requires internet access for tiles.
+
+```python
+import geopandas as gpd
+from shapely.geometry import LineString, Point
+import contextily as cx
+
+# Build mini GeoDataFrames for incoming/outgoing links touching NODE
+inc_ids = inc["linkid"].unique() if len(inc) else []
+out_ids = out["linkid"].unique() if len(out) else []
+
+sub_inc = seg[seg["linkid"].isin(inc_ids)].copy()
+sub_out = seg[seg["linkid"].isin(out_ids)].copy()
+
+# Make simple straight lines using first/last vertices
+make_lines = lambda g: gpd.GeoDataFrame(
+    g[["linkid"]].copy(),
+    geometry=[LineString([(a,b),(c,d)]) for a,b,c,d in zip(g["lon0"], g["lat0"], g["lon1"], g["lat1"])],
+    crs="EPSG:4326"
+)
+Ginc = make_lines(sub_inc).to_crs(3857)
+Gout = make_lines(sub_out).to_crs(3857)
+Gpt  = gpd.GeoDataFrame({"node":[NODE]},
+                        geometry=[Point(float(NODE.split(",")[0]), float(NODE.split(",")[1]))],
+                        crs="EPSG:4326").to_crs(3857)
+
+# Plot
+fig, ax = plt.subplots(figsize=(7,7))
+if len(Ginc): Ginc.plot(ax=ax, linewidth=3, alpha=0.85, color="#d81b60", label="incoming")
+if len(Gout): Gout.plot(ax=ax, linewidth=3, alpha=0.85, color="#1e88e5", label="outgoing")
+Gpt.plot(ax=ax, color="#2e7d32", markersize=60, zorder=5, label="node")
+
+cx.add_basemap(ax, source=cx.providers.CartoDB.Positron)
+ax.set_title(f"Node {NODE}: incoming (pink) vs outgoing (blue)")
+ax.axis("off")
+ax.legend(loc="lower left")
+plt.tight_layout()
+plt.show()
+```
+
+---
+
+## F) Save figures with nice margins
+
+```python
+# After any plt.show(), you can also save:
+plt.savefig("out/figures/example_plot.png", dpi=200, bbox_inches="tight")
+```
+
+---
+
+### Tips
+
+* Try `sns.set_theme(context="talk", style="whitegrid")` for presentation-sized fonts.
+* If basemap tiles don’t load (firewall/no internet), omit `cx.add_basemap(ax)` — your geometries still draw.
+* Want categorical palettes? Add `palette="tab10"` to `sns.lineplot(...)`.
